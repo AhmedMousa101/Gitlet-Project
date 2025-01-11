@@ -35,7 +35,7 @@ public class Commit implements Serializable {
     /** The files this Commit tracks */
     private Map<String, String> blobs;
     /** Ths Hash String of this commit. */
-    String shaHash;
+    public String shaHash;
 
     /**
      * Constructor to set a commit with Message message
@@ -77,6 +77,9 @@ public class Commit implements Serializable {
 
     /** A method to get sha of a certain file */
     public String getSha(String path){
+        if (!blobs.containsKey(path)){
+            return null;
+        }
         return blobs.get(path);
     }
 
@@ -103,4 +106,26 @@ public class Commit implements Serializable {
     public int size(){
         return this.blobs.size();
     }
+
+    /** Return the SHA of the parent commit */
+    public String getParent(){
+        return this.Parent;
+    }
+
+    /** Return a string describing the commit
+     * sha, Merge if found, Date, commit message */
+    @Override
+    public String toString(){
+        StringBuilder sb = new StringBuilder();
+        sb.append("commit ").append(shaHash).append('\n');
+        sb.append("Date: ").append(TimeStamp).append('\n');
+        sb.append(Message).append('\n');
+        return sb.toString();
+    }
+
+    /** A method to return the message of the commit */
+    public String getMessage(){
+        return this.Message;
+    }
+
 }

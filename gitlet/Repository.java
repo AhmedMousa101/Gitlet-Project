@@ -1,6 +1,7 @@
 package gitlet;
 
 import java.io.File;
+import java.sql.SQLSyntaxErrorException;
 import java.util.HashMap;
 import java.util.Map;
 import java.nio.file.Path;
@@ -30,6 +31,10 @@ public class Repository {
     private static final File Index_File = new File(GITLET_DIR, "Index");
     /** The blobs directory to keep track of all blobs. */
     private static final File Blobs_Dir = new File(GITLET_DIR, "blobs");
+    /** The branches directory to keep track of branches */
+    private static final File Branches_Dir = new File(GITLET_DIR, "branches");
+    /** Cur Branch file to save the name of the current branch*/
+    private static final File Branch_File = new File(GITLET_DIR, "curBranch");
     /** A map to keep track of the SHA of certain files
      * in order to achieve lazy loading & caching
      * */
@@ -40,6 +45,12 @@ public class Repository {
 
     /** index */
     public static Index IndexObj = null;
+
+    /** Head Sha */
+    public static String HeadSha = null;
+
+    /** Cur Branch */
+    public static Branch curBranch = null;
 
     /** Check if there is a repo. */
     public static boolean isRepo(){
@@ -54,7 +65,11 @@ public class Repository {
         if (!Blobs_Dir.exists()){
             Blobs_Dir.mkdir();
         }
+        if (!Branches_Dir.exists()){
+            Branches_Dir.mkdir();
+        }
     }
+
 
     /** A method to set the initial commit */
     public static String init(){
@@ -77,6 +92,7 @@ public class Repository {
         saveCommit(cur);
         index.clear();
         saveIndex(index);
+        updateBranchHead();
     }
 
     /** A function to set only initial commits */
@@ -84,6 +100,8 @@ public class Repository {
         Commit Initial = new Commit("Initial Commit");
         Commit.setInitial(Initial);
         saveCommit(Initial);
+        setBranch("Master");
+        switchBranchTo("Master");
         return Initial;
     }
 
@@ -92,6 +110,7 @@ public class Repository {
         File temp = new File(COMMITS_DIR, "Commit");
         Utils.writeObject(temp, commit);
         String shaHash = getSha(temp);
+        commit.shaHash = shaHash;
         temp.delete();
         temp = new File(COMMITS_DIR, shaHash);
         Utils.writeObject(temp, commit);
@@ -100,10 +119,13 @@ public class Repository {
 
     /** A method to return the Head Commit */
     public static String getHead(){
+        if (HeadSha != null){
+            return HeadSha;
+        }
         if (!Head_File.exists()){
             return null;
         }
-        return readContentsAsString(Head_File);
+        return HeadSha = readContentsAsString(Head_File);
     }
 
     /** A method to return a certain commit object based on its SHA */
@@ -181,7 +203,7 @@ public class Repository {
     public static Commit getHeadCommit(){
         if (HeadCommit != null)
             return HeadCommit;
-        return HeadCommit = getCommit(Utils.readContentsAsString(Head_File));
+        return HeadCommit = getCommit(getHead());
     }
 
     /** A method to add files to the repo. */
@@ -199,6 +221,8 @@ public class Repository {
     /** A method to print the status of the repo. */
     public static void status(){
         Index index = getIndex();
+        String branches = getBranches();
+        System.out.println(branches);
         System.out.println(index.toString());
     }
 
@@ -236,6 +260,15 @@ public class Repository {
         Utils.writeContents(file, content);
     }
 
+    /** A method to get blob data */
+    public static String getBlobData(String Sha){
+        File file = join(Blobs_Dir, Sha);
+        if (!file.exists()){
+            return null;
+        }
+        return Utils.readContentsAsString(file);
+    }
+
     /** A method to check if there are any staged files to the commit. */
     private static void checkCommit(){
         Index index = getIndex();
@@ -252,4 +285,165 @@ public class Repository {
         index.remove(file);
         saveIndex(index);
     }
+
+    /** A method to print the log starting from the current commit*/
+    public static void log(){
+        String CurCommitSha = getHead();
+        while(CurCommitSha != null){
+            Commit commit = getCommit(CurCommitSha);
+            System.out.println("===");
+            System.out.println(commit.toString());
+            CurCommitSha = commit.getParent();
+        }
+    }
+
+    /** A method to print the global log */
+    public static void global_log(){
+        File[] files = COMMITS_DIR.listFiles();
+        if (files != null){
+            for (File file : files){
+                Commit commit = getCommit(file.getName());
+                System.out.println("===");
+                System.out.println(commit.toString());
+            }
+        }
+    }
+
+    /** A method to find commits with a certain message */
+    public static void find(String message){
+        File[] files = COMMITS_DIR.listFiles();
+        boolean isTyped = false;
+        if (files != null){
+            for (File file : files){
+                Commit commit = getCommit(file.getName());
+                if (commit.getMessage().equals(message)){
+                    System.out.println("===");
+                    System.out.println(commit.shaHash + '\n');
+                    isTyped = true;
+                }
+            }
+        }
+        if (!isTyped){
+            System.out.println("Found no commit with that message.");
+            System.exit(1);
+        }
+    }
+
+    /** A method to get the current branch */
+    public static Branch getCurBranch(){
+        if (curBranch != null){
+            return curBranch;
+        }
+        if (!Branch_File.exists()){
+            return null;
+        }
+        return curBranch = getBranchByName(Utils.readContentsAsString(Branch_File));
+    }
+
+    /** A method to get the head of a ceratin branch */
+    public static Branch getBranchByName(String name){
+        File file = join(Branches_Dir, name);
+        if (!file.exists()){
+            return null;
+        }
+        return Utils.readObject(file, Branch.class);
+    }
+
+    /** A method to save a certain branch */
+    public static void saveBranch(Branch branch){
+        File file = join(Branches_Dir, branch.getName());
+        Utils.writeObject(file, branch);
+    }
+
+    /** A method to set a branch with a certain name */
+    public static void setBranch(String name){
+        File file = join(Branches_Dir, name);
+        if (file.exists()){
+            System.out.println("Branch already exists.");
+            System.exit(1);
+        }
+        String Sha = getHead();
+        Branch branch = new Branch(name, Sha);
+        Utils.writeObject(file, branch);
+    }
+
+    /** Update current branch head to the current branch*/
+    public static void updateBranchHead(){
+        Branch branch = getCurBranch();
+        branch.setSha(getHead());
+        saveBranch(branch);
+    }
+
+    /** A method to switch a branch to another one */
+    public static void switchBranchTo(String name){
+        File file = join(Branches_Dir, name);
+        if (!file.exists()){
+            System.exit(1);
+        }
+        Utils.writeContents(Branch_File, name);
+    }
+
+    /** A method to get all branches */
+    public static String getBranches(){
+        StringBuilder S = new StringBuilder();
+        S.append("=== Branches ===\n");
+        File[] files = Branches_Dir.listFiles();
+        if (files != null){
+            for (File file : files){
+                String name = file.getName();
+                if (name.equals(getCurBranch().getName())){
+                    S.append("*");
+                }
+                S.append(name).append('\n');
+            }
+        }
+        return S.toString();
+    }
+
+    /** A method to delete a certain branch */
+    public static void deleteBranch(String name){
+        Branch branch = getBranchByName(name);
+        Branch cur = getCurBranch();
+        if (cur.getName().equals(branch.getName())){
+            System.out.println("Cannot remove the current branch.");
+            System.exit(1);
+        }
+        File file = join(Branches_Dir, name);
+        if (file.exists()){
+            file.delete();
+        }
+        else {
+            System.out.println("Branch doesn't exist.");
+            System.exit(1);
+        }
+    }
+
+    /** A method to change the current branch */
+    public static void changeBranch(String name){
+        return;
+    }
+
+    /** A method to get a certain file into a certain commit */
+    public static void checkout(String Sha, String file_path){
+        Commit commit = getCommit(Sha);
+        if (commit == null){
+            System.out.println("No commit with that id exists.");
+            System.exit(1);
+        }
+        String blobSha = commit.getSha(file_path);
+        if (blobSha == null){
+            System.out.println("Commit doesn't exist.");
+            System.exit(1);
+        }
+        String content = getBlobData(blobSha);
+        File file = new File(file_path);
+        Utils.writeContents(file, content);
+    }
+
+    /** A method to get a certain file into the Head commit */
+    public static void checkout(String file_path){
+        checkout(getHead(), file_path);
+    }
+
+
 }
