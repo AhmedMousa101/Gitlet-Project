@@ -49,8 +49,5 @@ To remove a branch:
 To reset to a commit:
 `java gitlet.Main reset [commit id]`
 
-To merge files from the given branch into the current branch:
-`java gitlet.Main merge [branch name]`
-
 ## Acknowledgement
 This implementation follows the design of Gitlet[https://cs61bl.org/su20/projects/gitlet/#acknowledgments] owned by the staff of the EECS department at University of California, Berkeley.
