@@ -28,7 +28,7 @@ To see the global commit history:
 To find commits that contain a given message:
 `java gitlet.Main find [commit message]`
 
-To see the status (current branch, staged files, removed files, modified not staged for files, and untracked files):
+To see the status (current branch, staged files, removed files, and untracked files):
 `java gitlet.Main status`
 
 To checkout a file:
